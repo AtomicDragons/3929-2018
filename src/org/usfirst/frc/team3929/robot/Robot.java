@@ -7,13 +7,20 @@
 
 package org.usfirst.frc.team3929.robot;
 
+import com.ctre.phoenix.motorcontrol.can.TalonSRX;
+import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
+import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
+
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.PIDController;
 import edu.wpi.first.wpilibj.SerialPort;
+import edu.wpi.first.wpilibj.Spark;
 import edu.wpi.first.wpilibj.SpeedControllerGroup;
+import edu.wpi.first.wpilibj.Talon;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.VictorSP;
 import edu.wpi.first.wpilibj.command.Scheduler;
@@ -32,13 +39,20 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 public class Robot extends IterativeRobot {
 	
 	//Motor controllers
+	//had to change this back for the demo
+	//WPI_TalonSRX leftFront;
+	//WPI_VictorSPX leftRear;
+	//WPI_TalonSRX rightFront;
+	//WPI_VictorSPX rightRear;
 	VictorSP leftFront;
 	VictorSP leftRear;
 	VictorSP rightFront;
 	VictorSP rightRear;
-	VictorSP pulley;
-	VictorSP leftIntake;
-	VictorSP rightIntake;
+	WPI_TalonSRX pulley;
+	Spark leftIntake;
+	Spark rightIntake;
+	
+	VictorSP light;
 	
 	//Controller groups
 	SpeedControllerGroup leftMotors;
@@ -49,17 +63,21 @@ public class Robot extends IterativeRobot {
 	double leftPow;
 	double rightPow;
 	double drivePow;
-	
+
 	//Encoders
 	Encoder leftEncoder;
 	Encoder rightEncoder;
 	double distance;
+	double dDistance;
+	final double PULSE_TO_INCH = 10; //Convert from encoder to inch
+	final double robotHalf = 20; //Half the length of the robot
+	final double robotLength = 40; //The length of the robot
 	
 	//Gyros
-	PIDTool pidGyro;
 	SerialPort serial_port;
 	com.kauailabs.navx.frc.AHRS imu;
 	double angle;
+	double dAngle;
 	
 	//Controllers
 	Joystick driveStick;
@@ -105,17 +123,25 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void robotInit() {
 		
+		RobotSchematic map = new RobotSchematic();
+		
 		//leftEncoder.setDistancePerPulse(10); // wheel diameter * Math.PI);
 		
 		//Initialize motor controllers
 		//Match
-		leftFront = new VictorSP(0);
-		leftRear = new VictorSP(3);
-		rightFront = new VictorSP(1);
-		rightRear = new VictorSP(2);
+		// had to change these all back to victors for the demo sorry guys
+		leftFront = new VictorSP(map.LEFT_FRONT_MOTOR_PORT);
+		leftRear = new VictorSP(map.LEFT_REAR_MOTOR_PORT);
+		//leftRear.follow(leftFront);
+		rightFront = new VictorSP(map.RIGHT_FRONT_MOTOR_PORT);
+		rightRear = new VictorSP(map.RIGHT_REAR_MOTOR_PORT);
+		//rightRear.follow(rightFront);
+		light = new VictorSP(map.LIGHT_PORT);
+		/*
 		pulley = new VictorSP(4);
 		leftIntake = new VictorSP(5);
 		rightIntake = new VictorSP(6);
+		*/
 		
 		//Add motor controllers to control groups
 		leftMotors = new SpeedControllerGroup(leftFront, leftRear);
@@ -127,6 +153,12 @@ public class Robot extends IterativeRobot {
 		//Initialize controllers
 		driveStick = new Joystick(0);
 		opStick = new Joystick(1);
+		
+		//Initialize encoder
+		//both encoders were listed as 0,0 which caused errors
+		//changed to 0, 1, 2, 3 temporarily
+	leftEncoder = new Encoder(0, 1, false, Encoder.EncodingType.k4X);
+	rightEncoder = new Encoder(2, 3, false, Encoder.EncodingType.k4X);
 		
 		//Add auto choices to SmartDashboard
 		m_autoChooser.addDefault("Left Start, Left Switch", kLeftLeftSwAuto);
@@ -177,7 +209,9 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void autonomousPeriodic() {
 		Scheduler.getInstance().run();
-		distance = (leftEncoder.getDistance() + rightEncoder.getDistance()) / 2;
+		dDistance = (((leftEncoder.getDistance() + rightEncoder.getDistance()) / 2) * PULSE_TO_INCH) - distance;
+		distance = ((leftEncoder.getDistance() + rightEncoder.getDistance()) / 2) * PULSE_TO_INCH;
+		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
 		
 		switch (m_autoSelected) {
@@ -218,7 +252,6 @@ public class Robot extends IterativeRobot {
 				centerRightScAuto();
 				break;
 			default:
-				
 				break;
 		}
 	}
@@ -234,14 +267,14 @@ public class Robot extends IterativeRobot {
 	public void teleopPeriodic() {
 		Scheduler.getInstance().run();
 
-		if(driveStick.getRawButton(1)){
+		/*if(driveStick.getRawButton(1)){
 			leftEncoder.reset();
 			rightEncoder.reset();
 		} 
 		
 		if(driveStick.getRawButton(2)){
 			imu.resetDisplacement();
-		}
+		}*/ //commented out for eagles demo
 		
 		//GTA
 
@@ -249,27 +282,44 @@ public class Robot extends IterativeRobot {
 			//Arcade
 			case kArcadeMode:
 			drive.arcadeDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(0), true);
-			System.out.println("a");
 			break;
 			
 			//Tank
 			case kTankMode:
 			drive.tankDrive(driveStick.getRawAxis(1) * -1, driveStick.getRawAxis(5) * -1, true);
-			System.out.println("b");
 			break;
 			
 			//GTA
 			case kConsoleMode:
 			drive.arcadeDrive(
 			Math.pow((driveStick.getRawAxis(2) * (-1)) + driveStick.getRawAxis(3), 3),
-			(driveStick.getRawAxis(0) * (1)), true);
-				
-			System.out.println("c");
+			Math.pow((driveStick.getRawAxis(0) * (1)), 3), true);
 			break;
 			
 			default:
 			break;
 		}
+		
+		if(driveStick.getRawButton(1)) {
+			light.set(1);
+		}
+		else {
+			light.set(0);
+		}
+		/*
+		if(opStick.getRawButton(0)) {
+			leftIntake.set(1.0);
+			rightIntake.set(1.0);
+		}
+		
+		if(opStick.getRawButton(1)) {
+			pulley.set(1.0);
+		}
+		
+		if(opStick.getRawButton(2)) {
+			pulley.set(-1.0);
+		}
+		*/
 		
 	}
 
@@ -281,15 +331,44 @@ public class Robot extends IterativeRobot {
 		
 	}
 	
-	
-	
 	//METHODS
 	
 	/**
-	 * Method to drive; reverses power to one side.
+	 * Method to drive in autonomous
 	 */
-	public void drive(double powLeft, double powRight){
-		drive.tankDrive(powLeft * -1, powRight * -1, true);
+	public boolean driveTo(double target){
+		double error = target - distance;
+		double proportion = error / target;
+		double derivative = dDistance;
+		double power = proportion + derivative;
+		drive.tankDrive(power, power);
+		if(distance >= target) {
+			resetSensors();
+			return true;
+		}
+		return false;
+	}
+	
+	public boolean turnTo(double target) {
+		int dir = 1;
+		if(target < angle) {
+			dir = -1;
+		}
+		double proportion = ( Math.abs(target) - Math.abs(angle) ) / Math.abs(target);
+		double derivative = dAngle;
+		double power = 1;
+		drive.tankDrive(dir * power, dir * power * -1);
+		if(angle >= target) {
+			resetSensors();
+			return true;
+		}
+		return false;
+	}
+	
+	public void resetSensors(){
+		leftEncoder.reset();
+		rightEncoder.reset();
+		imu.resetDisplacement();
 	}
 	
 	public void leftLeftSwAuto() {
@@ -298,129 +377,111 @@ public class Robot extends IterativeRobot {
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(168 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 50) {
-				drive(.5, .5);
+			if(!driveTo(85.25 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
 		}
 	}
-	
+
 	public void leftRightSwAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(264 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(168 - robotHalf )) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnTwo;
 			}
 			break;
 		case turnTwo:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
+				stage = AutoStage.driveThree;
+			}
+			break;
+		case driveThree:
+			if(!driveTo(85.25 - robotLength)) {
+			}
+			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
-		}	
+		}
 	}
-	
+
 	public void leftLeftScAuto() {
 		switch(stage) {
 		case turnZero:
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(distance < 299) {
-				drive(.5, .5);
+			if(!driveTo(324 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 30) {
-				drive(.5, .5);
+			if(!driveTo(71.57 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
@@ -430,65 +491,49 @@ public class Robot extends IterativeRobot {
 	public void leftRightScAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.driveOne;
+			if(!turnTo(90)) {
 			}
 			break;
 		case driveOne:
-			if(distance < 168) {
-				drive(.5, .5);	
+			if(!driveTo(264 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(324 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnTwo;
 			}
 			break;
 		case turnTwo:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveThree;
 			}
 			break;
 		case driveThree:
-			if(distance < 12) {
-				drive(.5, .5);
+			if(!driveTo(71.57 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
-		}	
+		}
 	}
 
 	public void rightRightSwAuto() {
@@ -497,129 +542,111 @@ public class Robot extends IterativeRobot {
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(168 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 50) {
-				drive(.5, .5);
+			if(!driveTo(85.25 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
 		}
 	}
-	
+
 	public void rightLeftSwAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(264 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(168 - robotHalf )) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnTwo;
 			}
 			break;
 		case turnTwo:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
+				stage = AutoStage.driveThree;
+			}
+			break;
+		case driveThree:
+			if(!driveTo(85.25 - robotLength)) {
+			}
+			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
-		}	
+		}
 	}
-	
+
 	public void rightRightScAuto() {
 		switch(stage) {
 		case turnZero:
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(distance < 299) {
-				drive(.5, .5);
+			if(!driveTo(324 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
+			if(!turnTo(-90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 30) {
-				drive(.5, .5);
+			if(!driveTo(71.57 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
@@ -629,107 +656,82 @@ public class Robot extends IterativeRobot {
 	public void rightLeftScAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.driveOne;
+			if(!turnTo(-90)) {
 			}
 			break;
 		case driveOne:
-			if(distance < 168) {
-				drive(.5, .5);	
+			if(!driveTo(264 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 168) {
-				drive(.5, .5);
+			if(!driveTo(324 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnTwo;
 			}
 			break;
 		case turnTwo:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveThree;
 			}
 			break;
 		case driveThree:
-			if(distance < 12) {
-				drive(.5, .5);
+			if(!driveTo(71.57 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
-		}	
+		}
 	}
 
 	public void centerLeftSwAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() > - 45) {
-				drive(-.3, .3);
+			if(!turnTo(-43.95)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
-			if(distance < 238) {
-				drive(.5, .5);
+			if(!driveTo(233.38 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < 135) {
-				drive(.3, -.3);
+			if(!turnTo(133.95)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 70) {
-				drive(.5, .5);
+			if(!driveTo(85.25 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
@@ -739,43 +741,34 @@ public class Robot extends IterativeRobot {
 	public void centerRightSwAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() < 45) {
-				drive(.3, -.3);
+			if(!turnTo(43.95)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
-			if(distance < 238) {
-				drive(.5, .5);
+			if(!driveTo(233.38 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < - 135) {
-				drive(-.3, .3);
+			if(!turnTo(-133.95)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 70) {
-				drive(.5, .5);
+			if(!driveTo(85.25 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			//do stuff
 			break;
 		default:
 			break;
@@ -785,132 +778,100 @@ public class Robot extends IterativeRobot {
 	public void centerLeftScAuto() {
 		switch(stage) {
 		case turnZero:
-			if(imu.getFusedHeading() > - 45) {
-				drive(-.3, .3);
+			if(!turnTo(-43.95)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
-			if(distance < 238) {
-				drive(.5, .5);
+			if(!driveTo(233.38 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnOne;
 			}
 			break;
 		case turnOne:
-			if(imu.getFusedHeading() < 45) {
-				drive(.3, -.3);
+			if(!turnTo(43.95)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveTwo;
 			}
 			break;
 		case driveTwo:
-			if(distance < 120) {
-				drive(.5, .5);
+			if(!driveTo(156 - robotHalf)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.turnTwo;
 			}
 			break;
 		case turnTwo:
-			if(imu.getFusedHeading() < 90) {
-				drive(.3, -.3);
+			if(!turnTo(90)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.driveThree;
 			}
 			break;
 		case driveThree:
-			if(distance < 70) {
-				drive(.5, .5);
+			if(!driveTo(71.57 - robotLength)) {
 			}
 			else {
-				resetMeasures();
 				stage = AutoStage.place;
 			}
 		case place:
-			//do stuff
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void centerRightScAuto() {
-		switch(stage) {
-		case turnZero:
-			if(imu.getFusedHeading() > 45) {
-				drive(.3, -.3);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(distance < 238) {
-				drive(.5, .5);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(imu.getFusedHeading() < -45) {
-				drive(-.3, .3);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(distance < 120) {
-				drive(.5, .5);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(imu.getFusedHeading() < -90) {
-				drive(-.3, .3);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(distance < 70) {
-				drive(.5, .5);
-			}
-			else {
-				resetMeasures();
-				stage = AutoStage.place;
-			}
-		case place:
-			//do stuff
 			break;
 		default:
 			break;
 		}
 	}
 	
-	public void resetMeasures(){
-		leftEncoder.reset();
-		rightEncoder.reset();
-		imu.resetDisplacement();
+	public void centerRightScAuto() {
+		switch(stage) {
+		case turnZero:
+			if(!turnTo(43.95)) {
+			}
+			else {
+				stage = AutoStage.driveOne;
+			}
+			break;
+		case driveOne:
+			if(!driveTo(233.38 - robotHalf)) {
+			}
+			else {
+				stage = AutoStage.turnOne;
+			}
+			break;
+		case turnOne:
+			if(!turnTo(-43.95)) {
+			}
+			else {
+				stage = AutoStage.driveTwo;
+			}
+			break;
+		case driveTwo:
+			if(!driveTo(156 - robotHalf)) {
+			}
+			else {
+				stage = AutoStage.turnTwo;
+			}
+			break;
+		case turnTwo:
+			if(!turnTo(-90)) {
+			}
+			else {
+				stage = AutoStage.driveThree;
+			}
+			break;
+		case driveThree:
+			if(!driveTo(71.57 - robotLength)) {
+			}
+			else {
+				stage = AutoStage.place;
+			}
+		case place:
+			break;
+		default:
+			break;
+		}
 	}
 }
