@@ -39,16 +39,11 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 public class Robot extends IterativeRobot {
 	
 	//Motor controllers
-	//had to change this back for the demo
-	//WPI_TalonSRX leftFront;
-	//WPI_VictorSPX leftRear;
-	//WPI_TalonSRX rightFront;
-	//WPI_VictorSPX rightRear;
-	VictorSP leftFront;
-	VictorSP leftRear;
-	VictorSP rightFront;
-	VictorSP rightRear;
-	WPI_TalonSRX pulley;
+	WPI_TalonSRX leftFront;
+	WPI_VictorSPX leftRear;
+	WPI_TalonSRX rightFront;
+	WPI_VictorSPX rightRear;
+	WPI_TalonSRX lift;
 	Spark leftIntake;
 	Spark rightIntake;
 	
@@ -129,23 +124,22 @@ public class Robot extends IterativeRobot {
 		
 		//Initialize motor controllers
 		//Match
-		// had to change these all back to victors for the demo sorry guys
-		leftFront = new VictorSP(map.LEFT_FRONT_MOTOR_PORT);
-		leftRear = new VictorSP(map.LEFT_REAR_MOTOR_PORT);
-		//leftRear.follow(leftFront);
-		rightFront = new VictorSP(map.RIGHT_FRONT_MOTOR_PORT);
-		rightRear = new VictorSP(map.RIGHT_REAR_MOTOR_PORT);
-		//rightRear.follow(rightFront);
+		leftFront = new WPI_TalonSRX(map.LEFT_FRONT_MOTOR_PORT);
+		leftRear = new WPI_VictorSPX(map.LEFT_REAR_MOTOR_PORT);
+		leftRear.follow(leftFront);
+		rightFront = new WPI_TalonSRX(map.RIGHT_FRONT_MOTOR_PORT);
+		rightRear = new WPI_VictorSPX(map.RIGHT_REAR_MOTOR_PORT);
+		rightRear.follow(rightFront);
 		light = new VictorSP(map.LIGHT_PORT);
-		/*
-		pulley = new VictorSP(4);
-		leftIntake = new VictorSP(5);
-		rightIntake = new VictorSP(6);
-		*/
+		
+		//lift = new WPI_TalonSRX(map.LIFT_MOTOR_PORT);
+		//leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
+		//rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
+		
 		
 		//Add motor controllers to control groups
-		leftMotors = new SpeedControllerGroup(leftFront, leftRear);
-		rightMotors = new SpeedControllerGroup(rightFront, rightRear);
+		leftMotors = new SpeedControllerGroup(leftFront);
+		rightMotors = new SpeedControllerGroup(rightFront);
 		
 		//Add controller groups to differential drive
 		drive = new DifferentialDrive(leftMotors, rightMotors);
@@ -155,10 +149,9 @@ public class Robot extends IterativeRobot {
 		opStick = new Joystick(1);
 		
 		//Initialize encoder
-		//both encoders were listed as 0,0 which caused errors
-		//changed to 0, 1, 2, 3 temporarily
-	leftEncoder = new Encoder(0, 1, false, Encoder.EncodingType.k4X);
-	rightEncoder = new Encoder(2, 3, false, Encoder.EncodingType.k4X);
+		//gotta change this to where the encoders go
+		leftEncoder = new Encoder(0, 1, false, Encoder.EncodingType.k4X);
+		rightEncoder = new Encoder(2, 3, false, Encoder.EncodingType.k4X);
 		
 		//Add auto choices to SmartDashboard
 		m_autoChooser.addDefault("Left Start, Left Switch", kLeftLeftSwAuto);
@@ -211,6 +204,7 @@ public class Robot extends IterativeRobot {
 		Scheduler.getInstance().run();
 		dDistance = (((leftEncoder.getDistance() + rightEncoder.getDistance()) / 2) * PULSE_TO_INCH) - distance;
 		distance = ((leftEncoder.getDistance() + rightEncoder.getDistance()) / 2) * PULSE_TO_INCH;
+		
 		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
 		
@@ -313,11 +307,11 @@ public class Robot extends IterativeRobot {
 		}
 		
 		if(opStick.getRawButton(1)) {
-			pulley.set(1.0);
+			lift.set(1.0);
 		}
 		
 		if(opStick.getRawButton(2)) {
-			pulley.set(-1.0);
+			lift.set(-1.0);
 		}
 		*/
 		

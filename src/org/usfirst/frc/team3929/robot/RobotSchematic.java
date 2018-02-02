@@ -7,6 +7,9 @@ public class RobotSchematic {
 	public final int RIGHT_REAR_MOTOR_PORT = 2;
 	//public final int LEFT_INTAKE_MOTOR_PORT;
 	//public final int RIGHT_INTAKE_MOTOR_PORT;
+	//public final int LIFT_MOTOR_PORT;
+	//public final int LEFT_INTAKE_MOTOR_PORT;
+	//public final int RIGHT_INTAKE_MOTOR_PORT;
 	
 	public final int LIGHT_PORT = 7;
 }
