@@ -7,6 +7,8 @@
 
 package org.usfirst.frc.team3929.robot;
 
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
@@ -45,7 +47,11 @@ public class Robot extends IterativeRobot {
 	WPI_VictorSPX rightRear;
 	WPI_TalonSRX lift;
 	Spark leftIntake;
-	Spark rightIntake;
+	Spark rightIntake;	
+	
+	//Controller values
+	private double error;
+	private double signal;
 	
 	VictorSP light;
 	
@@ -59,14 +65,13 @@ public class Robot extends IterativeRobot {
 	double rightPow;
 	double drivePow;
 
-	//Encoders
-	Encoder leftEncoder;
-	Encoder rightEncoder;
-	double distance;
-	double dDistance;
-	final double PULSE_TO_INCH = 10; //Convert from encoder to inch
+	//Constants
 	final double robotHalf = 20; //Half the length of the robot
 	final double robotLength = 40; //The length of the robot
+	//final double kP;
+	//final double kI;
+	//final double kD;
+
 	
 	//Gyros
 	SerialPort serial_port;
@@ -132,6 +137,10 @@ public class Robot extends IterativeRobot {
 		rightRear.follow(rightFront);
 		light = new VictorSP(map.LIGHT_PORT);
 		
+		//Configures encoders
+		leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
+		rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
+		
 		//lift = new WPI_TalonSRX(map.LIFT_MOTOR_PORT);
 		//leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
 		//rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
@@ -148,10 +157,11 @@ public class Robot extends IterativeRobot {
 		driveStick = new Joystick(0);
 		opStick = new Joystick(1);
 		
-		//Initialize encoder
-		//gotta change this to where the encoders go
-		leftEncoder = new Encoder(0, 1, false, Encoder.EncodingType.k4X);
-		rightEncoder = new Encoder(2, 3, false, Encoder.EncodingType.k4X);
+		//Add data to SmartDashboard
+		signal = 0.0;
+		error = 0.0;
+		SmartDashboard.putNumber("Signal", signal);
+		SmartDashboard.putNumber("Error", error);
 		
 		//Add auto choices to SmartDashboard
 		m_autoChooser.addDefault("Left Start, Left Switch", kLeftLeftSwAuto);
@@ -202,8 +212,6 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void autonomousPeriodic() {
 		Scheduler.getInstance().run();
-		dDistance = (((leftEncoder.getDistance() + rightEncoder.getDistance()) / 2) * PULSE_TO_INCH) - distance;
-		distance = ((leftEncoder.getDistance() + rightEncoder.getDistance()) / 2) * PULSE_TO_INCH;
 		
 		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
@@ -271,8 +279,9 @@ public class Robot extends IterativeRobot {
 		}*/ //commented out for eagles demo
 		
 		//GTA
-
+		signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
 		switch (m_driveSelected) {
+			
 			//Arcade
 			case kArcadeMode:
 			drive.arcadeDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(0), true);
@@ -330,14 +339,13 @@ public class Robot extends IterativeRobot {
 	/**
 	 * Method to drive in autonomous
 	 */
-	public boolean driveTo(double target){
-		double error = target - distance;
-		double proportion = error / target;
-		double derivative = dDistance;
-		double power = proportion + derivative;
-		drive.tankDrive(power, power);
-		if(distance >= target) {
-			resetSensors();
+	public boolean driveTo(double target) {
+		//remember to set coefficients kP, kI, & kD
+		leftFront.set(ControlMode.Position, target);
+		rightFront.set(ControlMode.Position, target);
+		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
+		signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
+		if(leftFront.get() < .05 && rightFront.get() < .05) {
 			return true;
 		}
 		return false;
@@ -353,15 +361,13 @@ public class Robot extends IterativeRobot {
 		double power = 1;
 		drive.tankDrive(dir * power, dir * power * -1);
 		if(angle >= target) {
-			resetSensors();
+			resetGyro();
 			return true;
 		}
 		return false;
 	}
 	
-	public void resetSensors(){
-		leftEncoder.reset();
-		rightEncoder.reset();
+	public void resetGyro(){
 		imu.resetDisplacement();
 	}
 	
