@@ -45,9 +45,12 @@ public class Robot extends IterativeRobot {
 	WPI_VictorSPX leftRear;
 	WPI_TalonSRX rightFront;
 	WPI_VictorSPX rightRear;
-	WPI_TalonSRX lift;
+	WPI_TalonSRX elevator;
 	Spark leftIntake;
 	Spark rightIntake;	
+	
+	//Sensors
+	DigitalInput elevatorZero;
 	
 	//Controller values
 	private double error;
@@ -71,6 +74,9 @@ public class Robot extends IterativeRobot {
 	//final double kP;
 	//final double kI;
 	//final double kD;
+	
+	final double elevatorScale = 0;
+	final double elevatorSwitch = 0; 
 
 	
 	//Gyros
@@ -128,23 +134,21 @@ public class Robot extends IterativeRobot {
 		//leftEncoder.setDistancePerPulse(10); // wheel diameter * Math.PI);
 		
 		//Initialize motor controllers
-		//Match
 		leftFront = new WPI_TalonSRX(map.LEFT_FRONT_MOTOR_PORT);
 		leftRear = new WPI_VictorSPX(map.LEFT_REAR_MOTOR_PORT);
 		leftRear.follow(leftFront);
 		rightFront = new WPI_TalonSRX(map.RIGHT_FRONT_MOTOR_PORT);
 		rightRear = new WPI_VictorSPX(map.RIGHT_REAR_MOTOR_PORT);
 		rightRear.follow(rightFront);
-		light = new VictorSP(map.LIGHT_PORT);
 		
-		//Configures encoders
+		elevator = new WPI_TalonSRX(map.ELEVATOR_MOTOR_PORT);
+		leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
+		rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
+		
+		//Initialize/configures sensors
+		elevatorZero = new DigitalInput(map.ELEVATOR_SWITCH_PORT);
 		leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
-		
-		//lift = new WPI_TalonSRX(map.LIFT_MOTOR_PORT);
-		//leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
-		//rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
-		
 		
 		//Add motor controllers to control groups
 		leftMotors = new SpeedControllerGroup(leftFront);
@@ -303,26 +307,12 @@ public class Robot extends IterativeRobot {
 			break;
 		}
 		
-		if(driveStick.getRawButton(1)) {
-			light.set(1);
-		}
-		else {
-			light.set(0);
-		}
-		/*
-		if(opStick.getRawButton(0)) {
+		if(opStick.getRawButton(0)) {//Trigger for intake 
 			leftIntake.set(1.0);
 			rightIntake.set(1.0);
 		}
 		
-		if(opStick.getRawButton(1)) {
-			lift.set(1.0);
-		}
-		
-		if(opStick.getRawButton(2)) {
-			lift.set(-1.0);
-		}
-		*/
+		elevator.set(opStick.getRawAxis(1) * -1);
 		
 	}
 
@@ -345,7 +335,7 @@ public class Robot extends IterativeRobot {
 		rightFront.set(ControlMode.Position, target);
 		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
 		signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
-		if(leftFront.get() < .05 && rightFront.get() < .05) {
+		if(error < .05) {
 			return true;
 		}
 		return false;
@@ -365,6 +355,15 @@ public class Robot extends IterativeRobot {
 			return true;
 		}
 		return false;
+	}
+	public boolean elevatorTo(double target) {
+		elevator.set(ControlMode.Position, target); 
+		error = (elevator.getClosedLoopError(0)); 
+		if( error< .05) {
+			return true;
+		}
+		return false; 
+		
 	}
 	
 	public void resetGyro(){
@@ -403,6 +402,7 @@ public class Robot extends IterativeRobot {
 			break;
 		}
 	}
+
 
 	public void leftRightSwAuto() {
 		switch(stage) {
@@ -492,6 +492,9 @@ public class Robot extends IterativeRobot {
 		switch(stage) {
 		case turnZero:
 			if(!turnTo(90)) {
+			}
+			else {
+				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
@@ -657,6 +660,9 @@ public class Robot extends IterativeRobot {
 		switch(stage) {
 		case turnZero:
 			if(!turnTo(-90)) {
+			}
+			else {
+				stage = AutoStage.driveOne;
 			}
 			break;
 		case driveOne:
