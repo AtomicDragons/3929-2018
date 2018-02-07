@@ -12,6 +12,7 @@ import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
+import com.kauailabs.navx.frc.AHRS;
 
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
@@ -19,6 +20,7 @@ import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PIDController;
+import edu.wpi.first.wpilibj.SPI;
 import edu.wpi.first.wpilibj.SerialPort;
 import edu.wpi.first.wpilibj.Spark;
 import edu.wpi.first.wpilibj.SpeedControllerGroup;
@@ -50,7 +52,7 @@ public class Robot extends IterativeRobot {
 	Spark rightIntake;	
 	
 	//Sensors
-	DigitalInput elevatorZero;
+	DigitalInput elevatorLimitSwitch;
 	
 	//Controller values
 	private double error;
@@ -80,8 +82,7 @@ public class Robot extends IterativeRobot {
 
 	
 	//Gyros
-	SerialPort serial_port;
-	com.kauailabs.navx.frc.AHRS imu;
+	AHRS imu;
 	double angle;
 	double dAngle;
 	
@@ -119,7 +120,7 @@ public class Robot extends IterativeRobot {
 	enum AutoStage{
 		turnZero, driveOne, turnOne, driveTwo, turnTwo, driveThree, place
 	}
-	
+	private boolean elevatorZeroed;
 	AutoStage stage;
 
 	/**
@@ -128,6 +129,8 @@ public class Robot extends IterativeRobot {
 	 */
 	@Override
 	public void robotInit() {
+		
+		imu = new AHRS(SPI.Port.kMXP);
 		
 		RobotSchematic map = new RobotSchematic();
 		
@@ -146,9 +149,11 @@ public class Robot extends IterativeRobot {
 		rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
 		
 		//Initialize/configures sensors
-		elevatorZero = new DigitalInput(map.ELEVATOR_SWITCH_PORT);
+		elevatorLimitSwitch = new DigitalInput(map.ELEVATOR_SWITCH_PORT);
 		leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
+		
+		elevatorZeroed = false;
 		
 		//Add motor controllers to control groups
 		leftMotors = new SpeedControllerGroup(leftFront);
@@ -164,6 +169,7 @@ public class Robot extends IterativeRobot {
 		//Add data to SmartDashboard
 		signal = 0.0;
 		error = 0.0;
+		
 		SmartDashboard.putNumber("Signal", signal);
 		SmartDashboard.putNumber("Error", error);
 		
@@ -219,6 +225,12 @@ public class Robot extends IterativeRobot {
 		
 		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
+		
+		if(!elevatorZeroed) {
+			if(elevatorZero() ) {	
+				elevatorZeroed = false;
+			}
+		}
 		
 		switch (m_autoSelected) {
 			case kLeftLeftSwAuto:
@@ -307,7 +319,7 @@ public class Robot extends IterativeRobot {
 			break;
 		}
 		
-		if(opStick.getRawButton(0)) {//Trigger for intake 
+		if(opStick.getRawButton(0)) {
 			leftIntake.set(1.0);
 			rightIntake.set(1.0);
 		}
@@ -327,43 +339,69 @@ public class Robot extends IterativeRobot {
 	//METHODS
 	
 	/**
-	 * Method to drive in autonomous
+	 * Method to zero the elevator and returns whether the elevator is zeroed or not.
+	 * @return True if the elevator is not zeroed, false otherwise.
+	 */
+	public boolean elevatorZero() {
+		if(elevatorLimitSwitch.get()) {
+			elevator.set(-.2);
+			return false;
+		}
+		else {
+			return true; 
+		}
+	}
+	
+	/**
+	 * Method to drive a certain distance using PID.
+	 * @param target Desired distance.
+	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
 	public boolean driveTo(double target) {
 		//remember to set coefficients kP, kI, & kD
-		leftFront.set(ControlMode.Position, target);
-		rightFront.set(ControlMode.Position, target);
 		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
 		signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
 		if(error < .05) {
 			return true;
 		}
+		leftFront.set(ControlMode.Position, target);
+		rightFront.set(ControlMode.Position, target);
 		return false;
 	}
 	
+	/**
+	 * Method to turn to a certain angle using MXP.
+	 * @param target Desired angle.
+	 * @return True if the robot has arrived at the target, false otherwise.
+	 */
 	public boolean turnTo(double target) {
+		double proportion = ( Math.abs(target) - Math.abs(angle) ) / Math.abs(target);
+		double derivative = dAngle;
+		double power = 1;
 		int dir = 1;
 		if(target < angle) {
 			dir = -1;
 		}
-		double proportion = ( Math.abs(target) - Math.abs(angle) ) / Math.abs(target);
-		double derivative = dAngle;
-		double power = 1;
-		drive.tankDrive(dir * power, dir * power * -1);
 		if(angle >= target) {
 			resetGyro();
 			return true;
 		}
+		drive.tankDrive(dir * power, dir * power * -1);
 		return false;
 	}
+	
+	/**
+	 * Method to move the elevator a certain distance using PID.
+	 * @param target Desired distance.
+	 * @return True if the elevator has arrived at the target, false otherwise.
+	 */
 	public boolean elevatorTo(double target) {
-		elevator.set(ControlMode.Position, target); 
-		error = (elevator.getClosedLoopError(0)); 
 		if( error< .05) {
 			return true;
 		}
+		elevator.set(ControlMode.Position, target); 
+		error = (elevator.getClosedLoopError(0)); 
 		return false; 
-		
 	}
 	
 	public void resetGyro(){
