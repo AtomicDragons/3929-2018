@@ -48,8 +48,12 @@ public class Robot extends IterativeRobot {
 	WPI_TalonSRX rightFront;
 	WPI_VictorSPX rightRear;
 	WPI_TalonSRX elevator;
+	
 	Spark leftIntake;
 	Spark rightIntake;	
+	WPI_TalonSRX frontHanger;
+	VictorSP backHanger; 
+	
 	
 	//Sensors
 	DigitalInput elevatorLimitSwitch;
@@ -145,11 +149,15 @@ public class Robot extends IterativeRobot {
 		rightRear.follow(rightFront);
 		
 		elevator = new WPI_TalonSRX(map.ELEVATOR_MOTOR_PORT);
+		frontHanger = new WPI_TalonSRX(map.FRONT_HANGER_MOTOR_PORT); 
+		backHanger = new VictorSP(map.REAR_HANGER_MOTOR_PORT);
+		
 		leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
 		rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
 		
+		
 		//Initialize/configures sensors
-		elevatorLimitSwitch = new DigitalInput(map.ELEVATOR_SWITCH_PORT);
+		// elevatorLimitSwitch = new DigitalInput();
 		leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		
@@ -320,7 +328,7 @@ public class Robot extends IterativeRobot {
 		}
 		
 		if(opStick.getRawButton(0)) {
-			leftIntake.set(1.0);
+			leftIntake.set(-1.0);
 			rightIntake.set(1.0);
 		}
 		
