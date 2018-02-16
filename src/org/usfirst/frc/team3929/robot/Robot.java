@@ -22,6 +22,7 @@ import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PIDController;
 import edu.wpi.first.wpilibj.SPI;
 import edu.wpi.first.wpilibj.SerialPort;
+import edu.wpi.first.wpilibj.Solenoid;
 import edu.wpi.first.wpilibj.Spark;
 import edu.wpi.first.wpilibj.SpeedControllerGroup;
 import edu.wpi.first.wpilibj.Talon;
@@ -43,17 +44,20 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 public class Robot extends IterativeRobot {
 	
 	//Motor controllers
-	WPI_TalonSRX leftFront;
-	WPI_VictorSPX leftRear;
+	WPI_VictorSPX leftFront;
+	WPI_TalonSRX leftRear;
 	WPI_TalonSRX rightFront;
 	WPI_VictorSPX rightRear;
-	WPI_TalonSRX elevator;
+	TalonSRX elevator;
 	
 	Spark leftIntake;
 	Spark rightIntake;	
-	WPI_TalonSRX frontHanger;
+	Spark frontHanger;
 	VictorSP backHanger; 
 	
+	//Solenoids
+	DoubleSolenoid clawSully;
+	DoubleSolenoid liftSully;
 	
 	//Sensors
 	DigitalInput elevatorLimitSwitch;
@@ -141,20 +145,24 @@ public class Robot extends IterativeRobot {
 		//leftEncoder.setDistancePerPulse(10); // wheel diameter * Math.PI);
 		
 		//Initialize motor controllers
-		leftFront = new WPI_TalonSRX(map.LEFT_FRONT_MOTOR_PORT);
-		leftRear = new WPI_VictorSPX(map.LEFT_REAR_MOTOR_PORT);
-		leftRear.follow(leftFront);
-		rightFront = new WPI_TalonSRX(map.RIGHT_FRONT_MOTOR_PORT);
+		leftFront = new WPI_VictorSPX(map.LEFT_FRONT_MOTOR_PORT);
+		leftRear = new WPI_TalonSRX(map.LEFT_REAR_MOTOR_PORT);//0
+		leftFront.follow(leftRear);
 		rightRear = new WPI_VictorSPX(map.RIGHT_REAR_MOTOR_PORT);
+		rightFront = new WPI_TalonSRX(map.RIGHT_FRONT_MOTOR_PORT);
 		rightRear.follow(rightFront);
 		
-		elevator = new WPI_TalonSRX(map.ELEVATOR_MOTOR_PORT);
-		frontHanger = new WPI_TalonSRX(map.FRONT_HANGER_MOTOR_PORT); 
+		elevator = new TalonSRX(map.ELEVATOR_MOTOR_PORT);
+		frontHanger = new Spark(map.FRONT_HANGER_MOTOR_PORT); 
 		backHanger = new VictorSP(map.REAR_HANGER_MOTOR_PORT);
 		
 		leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
 		rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
 		
+		
+		//Initialize solenoids
+		//clawSully = new DoubleSolenoid(map.RIGHT_CLAW_SULLY_PORT, map.LEFT_CLAW_SULLY_PORT);
+		//liftSully = new DoubleSolenoid(map.RIGHT_CLAW_SULLY_PORT, map.LEFT_LIFT_SULLY_PORT);
 		
 		//Initialize/configures sensors
 		// elevatorLimitSwitch = new DigitalInput();
@@ -197,8 +205,8 @@ public class Robot extends IterativeRobot {
 		SmartDashboard.putData("Auto choices", m_autoChooser);
 		
 		//Add driving modes to SmartDashboard
-		m_driveChooser.addDefault("Arcade Driving Mode", kArcadeMode);
-		m_driveChooser.addObject("Tank Driving Mode", kTankMode);
+		m_driveChooser.addDefault("Tank Driving Mode", kTankMode);
+		m_driveChooser.addObject("Arcade Driving Mode", kArcadeMode);
 		m_driveChooser.addObject("Console Driving Mode", kConsoleMode);
 		SmartDashboard.putData("Drive choices", m_driveChooser);
 		
@@ -303,7 +311,7 @@ public class Robot extends IterativeRobot {
 		}*/ //commented out for eagles demo
 		
 		//GTA
-		signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
+		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
 		switch (m_driveSelected) {
 			
 			//Arcade
@@ -313,7 +321,7 @@ public class Robot extends IterativeRobot {
 			
 			//Tank
 			case kTankMode:
-			drive.tankDrive(driveStick.getRawAxis(1) * -1, driveStick.getRawAxis(5) * -1, true);
+			drive.tankDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(5), true);
 			break;
 			
 			//GTA
@@ -327,12 +335,29 @@ public class Robot extends IterativeRobot {
 			break;
 		}
 		
-		if(opStick.getRawButton(0)) {
+		if(driveStick.getRawButton(3)) {
+			elevator.set(ControlMode.PercentOutput, .3);
+		}
+		
+		if(opStick.getRawButton(1)) {
 			leftIntake.set(-1.0);
 			rightIntake.set(1.0);
 		}
+		//Intake controls on driveStick
+		if(driveStick.getRawButton(5)){
+			leftIntake.set(-1.0); 
+			rightIntake.set(1.0);
+		}
+		else if(driveStick.getRawButton(6)){
+			leftIntake.set(1.0);
+			rightIntake.set(-1.0);
+		}
 		
-		elevator.set(opStick.getRawAxis(1) * -1);
+		/*
+		if(Math.abs(opStick.getRawAxis(1)) > .2) {
+			elevator.set(opStick.getRawAxis(1) * -1);
+		}
+		*/
 		
 	}
 
@@ -352,7 +377,7 @@ public class Robot extends IterativeRobot {
 	 */
 	public boolean elevatorZero() {
 		if(elevatorLimitSwitch.get()) {
-			elevator.set(-.2);
+			elevator.set(ControlMode.PercentOutput, .3);
 			return false;
 		}
 		else {
@@ -368,7 +393,7 @@ public class Robot extends IterativeRobot {
 	public boolean driveTo(double target) {
 		//remember to set coefficients kP, kI, & kD
 		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
-		signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
+		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
 		if(error < .05) {
 			return true;
 		}
