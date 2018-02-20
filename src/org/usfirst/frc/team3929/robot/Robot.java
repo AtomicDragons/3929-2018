@@ -22,6 +22,7 @@ import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PIDController;
+import edu.wpi.first.wpilibj.Preferences;
 import edu.wpi.first.wpilibj.SPI;
 import edu.wpi.first.wpilibj.SerialPort;
 import edu.wpi.first.wpilibj.Solenoid;
@@ -45,7 +46,9 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 public class Robot extends IterativeRobot {
 	
-	final double kPgyro = 0.05;
+	double threadedtarget;
+	
+	double kPgyro = 0.05;
 	final double kIgyro = 0.0;
 	final double kDgyro = 0.0;
 	final double MAX_ROTATION_INPUT = .6;
@@ -137,6 +140,10 @@ public class Robot extends IterativeRobot {
 	private static final String kCenterLeftScAuto = "Center Start, Left Scale";
 	private static final String kCenterRightScAuto = "Center Start, Right Scale";
 	
+	private double autoDelay = 0;
+	
+	Preferences prefs;
+	
 	//Smart dashboard control choices
 	private static final String kArcadeMode = "Arcade Driving Mode";
 	private static final String kTankMode = "Tank Driving Mode =)";
@@ -162,6 +169,10 @@ public class Robot extends IterativeRobot {
 	 */
 	@Override
 	public void robotInit() {
+		
+		//autodelay config
+		prefs = Preferences.getInstance();
+		autoDelay = prefs.getDouble("Auto Delay", 0);
 		
 		pidGyro = new PIDTool(kPgyro, kIgyro, kDgyro, 0, -MAX_ROTATION_INPUT, MAX_ROTATION_INPUT);
 		
@@ -271,9 +282,19 @@ public class Robot extends IterativeRobot {
 	
 	@Override
 	public void autonomousInit() {
+		try {
+			timer.sleep( (long) autoDelay);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
 		m_autoSelected = m_autoChooser.getSelected();
 		System.out.println("Auto selected: " + m_autoSelected);
 		resetEncoders();
+		/*
+		new Thread(new Thread1()).start();
+		*/
 	}
 	
 
@@ -438,7 +459,7 @@ public class Robot extends IterativeRobot {
 			}
 		}
 		else {
-			elevator.set(-.1);
+			elevator.set(-.15);
 		}
 		
 		///Raise claws
@@ -494,7 +515,7 @@ public class Robot extends IterativeRobot {
 	 */
 	public boolean elevatorZero() {
 		if(elevatorLimitSwitchTop.get()) {
-			elevator.set(.3);
+			elevator.set(-.3);
 			return false;
 		}
 		else {
@@ -507,7 +528,31 @@ public class Robot extends IterativeRobot {
 	 * @param target Desired distance.
 	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
+	
+	public class Thread1 implements Runnable{
+
+		@Override
+		public void run() {
+			
+			driveToTimed(threadedtarget);
+			/*
+			threadedtarget = threadedtarget * TIME_CONVERSION;
+			// TODO Auto-generated method stub
+			try {
+				Thread.sleep( (long) threadedtarget);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			drive.tankDrive(.4, .4);
+			*/
+		}
+
+		
+		
+		
+	}
 	public boolean driveTo(double target) {
+		threadedtarget = target;
 		target = target * PULSE_CONVERSION;
 		//remember to set coefficients kP, kI, & kD
 		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
@@ -610,6 +655,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -662,6 +708,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -695,6 +742,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -746,6 +794,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -779,6 +828,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -830,6 +880,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -863,6 +914,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -914,6 +966,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -951,6 +1004,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -988,6 +1042,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -1038,6 +1093,7 @@ public class Robot extends IterativeRobot {
 				stage = AutoStage.place;
 			}
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
@@ -1088,6 +1144,7 @@ public class Robot extends IterativeRobot {
 				stage = AutoStage.place;
 			}
 		case place:
+			clawSully.set(DoubleSolenoid.Value.kForward);
 			break;
 		default:
 			break;
