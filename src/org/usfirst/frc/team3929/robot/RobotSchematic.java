@@ -16,5 +16,6 @@ public class RobotSchematic {
 	public final int LEFT_CLAW_SULLY_PORT = 1;
 	public final int RIGHT_CLAW_SULLY_PORT = 2;
 	
-	public final int LIMIT_SWITCH_PORT = 99;
+	public final int LIMIT_SWITCH_TOP_PORT = 99;
+	public final int LIMIT_SWITCH_BOTTOM_PORT = 99;
 }

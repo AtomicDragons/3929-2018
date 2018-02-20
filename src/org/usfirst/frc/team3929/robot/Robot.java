@@ -187,9 +187,9 @@ public class Robot extends IterativeRobot {
 		frontHanger = new Spark(map.FRONT_HANGER_MOTOR_PORT); 
 		backHanger = new VictorSP(map.REAR_HANGER_MOTOR_PORT);
 		
-		leftEncoder = new Encoder(0,1,false,Encoder.EncodingType.k4X);
+		leftEncoder = new Encoder(1,0,false,Encoder.EncodingType.k4X);
 		
-		rightEncoder = new Encoder(2,3,false,Encoder.EncodingType.k4X);
+		rightEncoder = new Encoder(3,2,false,Encoder.EncodingType.k4X);
 		
 		isOpened = false;
 		isLifted = false;
@@ -204,10 +204,11 @@ public class Robot extends IterativeRobot {
 		liftSully = new DoubleSolenoid(map.RIGHT_LIFT_SULLY_PORT, map.LEFT_LIFT_SULLY_PORT);
 		
 		//Initialize/configures sensors
-		//elevatorLimitSwitchBottom = new DigitalInput(3);		
+		//elevatorLimitSwitchBottom = new DigitalInput(map.LIMIT_SWITCH_BOTTOM_PORT);
+		//elevatorLimitSwitchTop = new DigitalInput(map.LIMIT_SWITCH_TOP_PORT);
 		
-		leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
-		rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
+		//leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
+		//rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		
 		elevatorZeroed = false;
 		
@@ -351,8 +352,8 @@ public class Robot extends IterativeRobot {
 	public void teleopPeriodic() {
 		Scheduler.getInstance().run();
 		compressor.setClosedLoopControl(true); 
-		System.out.println(leftEncoder.get());
-		System.out.println(rightEncoder.get());
+		System.out.println("Left" + leftEncoder.get());
+		System.out.println("Right" + rightEncoder.get());
 		
 		//GTA
 		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
@@ -425,6 +426,9 @@ public class Robot extends IterativeRobot {
 		}
 		*/
 		//opstick elevator
+		
+		System.out.println(elevator.get());
+		
 		if(Math.abs(opStick.getRawAxis(1)) > .3) {
 			if(opStick.getRawAxis(1) - .15 < -1) {
 				elevator.set(-1);
@@ -489,7 +493,7 @@ public class Robot extends IterativeRobot {
 	 * @return True if the elevator is not zeroed, false otherwise.
 	 */
 	public boolean elevatorZero() {
-		if(elevatorLimitSwitchBottom.get()) {
+		if(elevatorLimitSwitchTop.get()) {
 			elevator.set(.3);
 			return false;
 		}
