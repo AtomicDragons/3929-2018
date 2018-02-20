@@ -14,6 +14,8 @@ import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import com.kauailabs.navx.frc.AHRS;
 
+import edu.wpi.first.wpilibj.Compressor;
+import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Encoder;
@@ -43,12 +45,21 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 public class Robot extends IterativeRobot {
 	
+	final double kPgyro = 0.05;
+	final double kIgyro = 0.0;
+	final double kDgyro = 0.0;
+	final double MAX_ROTATION_INPUT = .6;
+	final double MINM_ROTATION_INPUT = .4;
+	final double MAX_VISION_INPUT = 0.5;
+	
+	PIDTool pidGyro;
+	
 	//Motor controllers
 	WPI_VictorSPX leftFront;
 	WPI_TalonSRX leftRear;
 	WPI_TalonSRX rightFront;
 	WPI_VictorSPX rightRear;
-	TalonSRX elevator;
+	WPI_TalonSRX elevator;
 	
 	Spark leftIntake;
 	Spark rightIntake;	
@@ -56,11 +67,15 @@ public class Robot extends IterativeRobot {
 	VictorSP backHanger; 
 	
 	//Solenoids
+	Compressor compressor;
 	DoubleSolenoid clawSully;
 	DoubleSolenoid liftSully;
+	boolean isLifted;
+	boolean isOpened;
 	
 	//Sensors
-	DigitalInput elevatorLimitSwitch;
+	DigitalInput elevatorLimitSwitchBottom;
+	DigitalInput elevatorLimitSwitchTop;
 	
 	//Controller values
 	private double error;
@@ -72,15 +87,25 @@ public class Robot extends IterativeRobot {
 	SpeedControllerGroup leftMotors;
 	SpeedControllerGroup rightMotors;
 	
+	double throttleLeft;
+	double throttleRight;
+	
+	//Encoders
+	Encoder leftEncoder; 
+	Encoder rightEncoder; 
+	
 	//Drive
 	DifferentialDrive drive;
 	double leftPow;
 	double rightPow;
 	double drivePow;
+	java.util.concurrent.TimeUnit timer;
 
 	//Constants
-	final double robotHalf = 20; //Half the length of the robot
-	final double robotLength = 40; //The length of the robot
+	final double ROBOT_HALF = 14; //Half the length of the robot
+	final double ROBOT_LENGTH = 28; //The length of the robot
+	final double PULSE_CONVERSION =  256 / (6 * Math.PI); 
+	final double TIME_CONVERSION = 1000;
 	//final double kP;
 	//final double kI;
 	//final double kD;
@@ -138,6 +163,12 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void robotInit() {
 		
+		pidGyro = new PIDTool(kPgyro, kIgyro, kDgyro, 0, -MAX_ROTATION_INPUT, MAX_ROTATION_INPUT);
+		
+		
+		CameraServer.getInstance().startAutomaticCapture();
+		CameraServer.getInstance().startAutomaticCapture();
+		
 		imu = new AHRS(SPI.Port.kMXP);
 		
 		RobotSchematic map = new RobotSchematic();
@@ -152,20 +183,29 @@ public class Robot extends IterativeRobot {
 		rightFront = new WPI_TalonSRX(map.RIGHT_FRONT_MOTOR_PORT);
 		rightRear.follow(rightFront);
 		
-		elevator = new TalonSRX(map.ELEVATOR_MOTOR_PORT);
+		elevator = new WPI_TalonSRX(map.ELEVATOR_MOTOR_PORT);
 		frontHanger = new Spark(map.FRONT_HANGER_MOTOR_PORT); 
 		backHanger = new VictorSP(map.REAR_HANGER_MOTOR_PORT);
 		
+		leftEncoder = new Encoder(0,1,false,Encoder.EncodingType.k4X);
+		
+		rightEncoder = new Encoder(2,3,false,Encoder.EncodingType.k4X);
+		
+		isOpened = false;
+		isLifted = false;
+		  
 		leftIntake = new Spark(map.LEFT_INTAKE_MOTOR_PORT);
 		rightIntake = new Spark(map.RIGHT_INTAKE_MOTOR_PORT);
 		
 		
 		//Initialize solenoids
-		//clawSully = new DoubleSolenoid(map.RIGHT_CLAW_SULLY_PORT, map.LEFT_CLAW_SULLY_PORT);
-		//liftSully = new DoubleSolenoid(map.RIGHT_CLAW_SULLY_PORT, map.LEFT_LIFT_SULLY_PORT);
+		compressor = new Compressor();
+		clawSully = new DoubleSolenoid(map.RIGHT_CLAW_SULLY_PORT, map.LEFT_CLAW_SULLY_PORT);
+		liftSully = new DoubleSolenoid(map.RIGHT_LIFT_SULLY_PORT, map.LEFT_LIFT_SULLY_PORT);
 		
 		//Initialize/configures sensors
-		// elevatorLimitSwitch = new DigitalInput();
+		//elevatorLimitSwitchBottom = new DigitalInput(3);		
+		
 		leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 0);
 		
@@ -174,6 +214,8 @@ public class Robot extends IterativeRobot {
 		//Add motor controllers to control groups
 		leftMotors = new SpeedControllerGroup(leftFront);
 		rightMotors = new SpeedControllerGroup(rightFront);
+		throttleLeft = 0;
+		throttleRight = 0;
 		
 		//Add controller groups to differential drive
 		drive = new DifferentialDrive(leftMotors, rightMotors);
@@ -230,6 +272,14 @@ public class Robot extends IterativeRobot {
 	public void autonomousInit() {
 		m_autoSelected = m_autoChooser.getSelected();
 		System.out.println("Auto selected: " + m_autoSelected);
+		resetEncoders();
+	}
+	
+
+	public void resetEncoders() {
+		leftEncoder.reset();
+		rightEncoder.reset();
+		
 	}
 
 	/**
@@ -244,7 +294,7 @@ public class Robot extends IterativeRobot {
 		
 		if(!elevatorZeroed) {
 			if(elevatorZero() ) {	
-				elevatorZeroed = false;
+				elevatorZeroed = true;
 			}
 		}
 		
@@ -300,15 +350,9 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void teleopPeriodic() {
 		Scheduler.getInstance().run();
-
-		/*if(driveStick.getRawButton(1)){
-			leftEncoder.reset();
-			rightEncoder.reset();
-		} 
-		
-		if(driveStick.getRawButton(2)){
-			imu.resetDisplacement();
-		}*/ //commented out for eagles demo
+		compressor.setClosedLoopControl(true); 
+		System.out.println(leftEncoder.get());
+		System.out.println(rightEncoder.get());
 		
 		//GTA
 		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
@@ -316,12 +360,23 @@ public class Robot extends IterativeRobot {
 			
 			//Arcade
 			case kArcadeMode:
-			drive.arcadeDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(0), true);
+				//this hasn't been tested!!!!!!
+				/*if(Math.abs(throttleLeft + (driveStick.getRawAxis(1)) / 3) < 1 ) {
+					throttleLeft += (driveStick.getRawAxis(1)) / 10;
+				}
+				if(Math.abs(throttleRight + (driveStick.getRawAxis(0)) / 3) < 1) {
+					throttleRight += (driveStick.getRawAxis(0)) / 10;
+				}
+				System.out.println(throttleLeft + " ||| " + throttleRight);
+				drive.arcadeDrive(throttleLeft, throttleRight, true);*/
+				
+				drive.arcadeDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(0), true);
 			break;
 			
 			//Tank
 			case kTankMode:
-			drive.tankDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(5), true);
+				
+			drive.tankDrive(driveStick.getRawAxis(1) * - 1, driveStick.getRawAxis(5) * - 1, true);
 			break;
 			
 			//GTA
@@ -335,29 +390,87 @@ public class Robot extends IterativeRobot {
 			break;
 		}
 		
-		if(driveStick.getRawButton(3)) {
-			elevator.set(ControlMode.PercentOutput, .3);
+		//OpStick outtake
+		if(opStick.getRawButton(2)) {
+			leftIntake.set(1.0);
+			rightIntake.set(-1.0);
 		}
-		
-		if(opStick.getRawButton(1)) {
+		else if(opStick.getRawButton(1)) {
 			leftIntake.set(-1.0);
 			rightIntake.set(1.0);
 		}
-		//Intake controls on driveStick
-		if(driveStick.getRawButton(5)){
+		//DriveStick intake
+		else if(driveStick.getRawButton(5)){
 			leftIntake.set(-1.0); 
 			rightIntake.set(1.0);
 		}
+		//DriveStick outtake
 		else if(driveStick.getRawButton(6)){
 			leftIntake.set(1.0);
 			rightIntake.set(-1.0);
 		}
-		
+		else {
+			leftIntake.set(0);
+			rightIntake.set(0);
+		}
 		/*
-		if(Math.abs(opStick.getRawAxis(1)) > .2) {
-			elevator.set(opStick.getRawAxis(1) * -1);
+		//DriveStick climber
+		if(driveStick.getRawButton(1)) {
+			frontHanger.set(.6);
+			backHanger.set(-.6);
+		}
+		else {
+			frontHanger.set(0);
+			backHanger.set(0);
 		}
 		*/
+		//opstick elevator
+		if(Math.abs(opStick.getRawAxis(1)) > .3) {
+			if(opStick.getRawAxis(1) - .15 < -1) {
+				elevator.set(-1);
+			}
+			else {
+				elevator.set(opStick.getRawAxis(1) - .15);
+			}
+		}
+		else {
+			elevator.set(-.1);
+		}
+		
+		///Raise claws
+		if(opStick.getRawButton(11)) {
+			liftSully.set(DoubleSolenoid.Value.kReverse);
+		}
+		//Lower claws
+		else{
+			liftSully.set(DoubleSolenoid.Value.kForward);
+		}
+	
+		
+		//Open claws
+		if(opStick.getRawButton(7)) {
+			clawSully.set(DoubleSolenoid.Value.kForward);
+		}
+		//Close claws
+		else {
+			clawSully.set(DoubleSolenoid.Value.kReverse);
+		}
+		//Opstick climber 
+		/*
+		if(opStick.getRawButton(6)) {
+			frontHanger.set(-.6);
+			backHanger.set(.6);
+		}
+		*/
+		if(opStick.getRawButton(4) && driveStick.getRawButton(6)) { 
+			//the second button is supposed to be "back" on driver controller - test
+			frontHanger.set(.6);
+			backHanger.set(-.6);
+		}
+		else {
+			frontHanger.set(0);
+			backHanger.set(0);
+		}
 		
 	}
 
@@ -376,8 +489,8 @@ public class Robot extends IterativeRobot {
 	 * @return True if the elevator is not zeroed, false otherwise.
 	 */
 	public boolean elevatorZero() {
-		if(elevatorLimitSwitch.get()) {
-			elevator.set(ControlMode.PercentOutput, .3);
+		if(elevatorLimitSwitchBottom.get()) {
+			elevator.set(.3);
 			return false;
 		}
 		else {
@@ -391,6 +504,7 @@ public class Robot extends IterativeRobot {
 	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
 	public boolean driveTo(double target) {
+		target = target * PULSE_CONVERSION;
 		//remember to set coefficients kP, kI, & kD
 		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
 		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
@@ -402,12 +516,26 @@ public class Robot extends IterativeRobot {
 		return false;
 	}
 	
+	public boolean driveToTimed(double target) {
+		target = target * TIME_CONVERSION; // time it takes to travel one inch at .4 power, measured in milliseconds
+		
+		try {
+			timer.sleep( (long) target);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		drive.tankDrive(.4, .4);
+		
+		return true;
+	}
+	
 	/**
 	 * Method to turn to a certain angle using MXP.
 	 * @param target Desired angle.
 	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
 	public boolean turnTo(double target) {
+		/*
 		double proportion = ( Math.abs(target) - Math.abs(angle) ) / Math.abs(target);
 		double derivative = dAngle;
 		double power = 1;
@@ -421,6 +549,16 @@ public class Robot extends IterativeRobot {
 		}
 		drive.tankDrive(dir * power, dir * power * -1);
 		return false;
+		*/
+		if((Math.abs(imu.getYaw())>target+2||Math.abs(imu.getYaw())<target-2)) {
+			drive.tankDrive(pidGyro.computeControl(target),-(pidGyro.computeControl(target)));	
+			return false;
+		}
+		else {
+			drive.tankDrive(0.0, 0.0);
+			resetGyro();
+			return true;
+		}
 	}
 	
 	/**
@@ -447,7 +585,7 @@ public class Robot extends IterativeRobot {
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(!driveTo(168 - robotHalf)) {
+			if(!driveTo(168 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -461,7 +599,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(85.25 - robotLength)) {
+			if(!driveTo(85.25 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -485,7 +623,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(264 - robotHalf)) {
+			if(!driveTo(264 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -499,7 +637,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(168 - robotHalf )) {
+			if(!driveTo(168 - ROBOT_HALF )) {
 			}
 			else {
 				stage = AutoStage.turnTwo;
@@ -513,7 +651,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(85.25 - robotLength)) {
+			if(!driveTo(85.25 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -532,7 +670,7 @@ public class Robot extends IterativeRobot {
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(!driveTo(324 - robotHalf)) {
+			if(!driveTo(324 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -546,7 +684,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(71.57 - robotLength)) {
+			if(!driveTo(71.57 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -569,7 +707,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(264 - robotHalf)) {
+			if(!driveTo(264 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -583,7 +721,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(324 - robotHalf)) {
+			if(!driveTo(324 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnTwo;
@@ -597,7 +735,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(71.57 - robotLength)) {
+			if(!driveTo(71.57 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -616,7 +754,7 @@ public class Robot extends IterativeRobot {
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(!driveTo(168 - robotHalf)) {
+			if(!driveTo(168 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -630,7 +768,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(85.25 - robotLength)) {
+			if(!driveTo(85.25 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -653,7 +791,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(264 - robotHalf)) {
+			if(!driveTo(264 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -667,7 +805,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(168 - robotHalf )) {
+			if(!driveTo(168 - ROBOT_HALF )) {
 			}
 			else {
 				stage = AutoStage.turnTwo;
@@ -681,7 +819,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(85.25 - robotLength)) {
+			if(!driveTo(85.25 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -700,7 +838,7 @@ public class Robot extends IterativeRobot {
 			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(!driveTo(324 - robotHalf)) {
+			if(!driveTo(324 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -714,7 +852,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(71.57 - robotLength)) {
+			if(!driveTo(71.57 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -737,7 +875,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(264 - robotHalf)) {
+			if(!driveTo(264 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -751,7 +889,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(324 - robotHalf)) {
+			if(!driveTo(324 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnTwo;
@@ -765,7 +903,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(71.57 - robotLength)) {
+			if(!driveTo(71.57 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -788,7 +926,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(233.38 - robotHalf)) {
+			if(!driveTo(233.38 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -802,7 +940,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(85.25 - robotLength)) {
+			if(!driveTo(85.25 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -825,7 +963,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(233.38 - robotHalf)) {
+			if(!driveTo(233.38 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -839,7 +977,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(85.25 - robotLength)) {
+			if(!driveTo(85.25 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -862,7 +1000,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(233.38 - robotHalf)) {
+			if(!driveTo(233.38 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -876,7 +1014,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(156 - robotHalf)) {
+			if(!driveTo(156 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnTwo;
@@ -890,7 +1028,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(71.57 - robotLength)) {
+			if(!driveTo(71.57 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
@@ -912,7 +1050,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveOne:
-			if(!driveTo(233.38 - robotHalf)) {
+			if(!driveTo(233.38 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnOne;
@@ -926,7 +1064,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(156 - robotHalf)) {
+			if(!driveTo(156 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.turnTwo;
@@ -940,7 +1078,7 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(71.57 - robotLength)) {
+			if(!driveTo(71.57 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
