@@ -46,8 +46,6 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 public class Robot extends IterativeRobot {
 	
-	double threadedtarget;
-	
 	double kPgyro = 0.05;
 	final double kIgyro = 0.0;
 	final double kDgyro = 0.0;
@@ -107,7 +105,7 @@ public class Robot extends IterativeRobot {
 	//Constants
 	final double ROBOT_HALF = 14; //Half the length of the robot
 	final double ROBOT_LENGTH = 28; //The length of the robot
-	final double PULSE_CONVERSION =  256 / (6 * Math.PI); 
+	final double PULSE_CONVERSION =  256 / (6 * Math.PI); //inches to encoder
 	final double TIME_CONVERSION = 1000;
 	//final double kP;
 	//final double kI;
@@ -290,18 +288,8 @@ public class Robot extends IterativeRobot {
 		}
 		
 		m_autoSelected = m_autoChooser.getSelected();
-		System.out.println("Auto selected: " + m_autoSelected);
 		resetEncoders();
-		/*
-		new Thread(new Thread1()).start();
-		*/
-	}
-	
-
-	public void resetEncoders() {
-		leftEncoder.reset();
-		rightEncoder.reset();
-		
+		resetGyro();
 	}
 
 	/**
@@ -314,11 +302,13 @@ public class Robot extends IterativeRobot {
 		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
 		
+		/*
 		if(!elevatorZeroed) {
 			if(elevatorZero() ) {	
 				elevatorZeroed = true;
 			}
 		}
+		*/
 		
 		switch (m_autoSelected) {
 			case kLeftLeftSwAuto:
@@ -373,8 +363,6 @@ public class Robot extends IterativeRobot {
 	public void teleopPeriodic() {
 		Scheduler.getInstance().run();
 		compressor.setClosedLoopControl(true); 
-		System.out.println("Left" + leftEncoder.get());
-		System.out.println("Right" + rightEncoder.get());
 		
 		//GTA
 		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
@@ -397,8 +385,8 @@ public class Robot extends IterativeRobot {
 			
 			//Tank
 			case kTankMode:
-				
-			drive.tankDrive(driveStick.getRawAxis(1) * - 1, driveStick.getRawAxis(5) * - 1, true);
+
+			drive.tankDrive(driveStick.getRawAxis(1) * - 1, driveStick.getRawAxis(3) * - 1, true);
 			break;
 			
 			//GTA
@@ -448,8 +436,6 @@ public class Robot extends IterativeRobot {
 		*/
 		//opstick elevator
 		
-		System.out.println(elevator.get());
-		
 		if(Math.abs(opStick.getRawAxis(1)) > .3) {
 			if(opStick.getRawAxis(1) - .15 < -1) {
 				elevator.set(-1);
@@ -473,7 +459,7 @@ public class Robot extends IterativeRobot {
 	
 		
 		//Open claws
-		if(opStick.getRawButton(7)) {
+		if(opStick.getRawButton(12)) {
 			clawSully.set(DoubleSolenoid.Value.kForward);
 		}
 		//Close claws
@@ -524,38 +510,36 @@ public class Robot extends IterativeRobot {
 	}
 	
 	/**
+	 * Simple method to drive a certain distance using proportion
+	 * @param target Desired distance.
+	 * @return True if the robot has arrived at the target, false otherwise.
+	 */
+	public boolean driveTo(double target) {
+		target = target * PULSE_CONVERSION;
+		error = target - leftEncoder.get();
+		if(error / PULSE_CONVERSION < 2) {
+			drive.tankDrive(0.0, 0.0);
+			resetEncoders();
+			return true;
+		}
+		if(error / target > .25) {
+			drive.tankDrive(error / target, error / target);
+		}
+		else {
+			drive.tankDrive(.25, .25);
+		}
+		return false;
+	}
+	
+	/**
 	 * Method to drive a certain distance using PID.
 	 * @param target Desired distance.
 	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
-	
-	public class Thread1 implements Runnable{
-
-		@Override
-		public void run() {
-			
-			driveToTimed(threadedtarget);
-			/*
-			threadedtarget = threadedtarget * TIME_CONVERSION;
-			// TODO Auto-generated method stub
-			try {
-				Thread.sleep( (long) threadedtarget);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-			drive.tankDrive(.4, .4);
-			*/
-		}
-
-		
-		
-		
-	}
-	public boolean driveTo(double target) {
-		threadedtarget = target;
+	public boolean driveToPID(double target) {
 		target = target * PULSE_CONVERSION;
 		//remember to set coefficients kP, kI, & kD
-		error = ( leftFront.getClosedLoopError(0) + rightFront.getClosedLoopError(0) ) / 2;
+		error = ( leftFront.getClosedLoopError(0));
 		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
 		if(error < .05) {
 			return true;
@@ -565,6 +549,11 @@ public class Robot extends IterativeRobot {
 		return false;
 	}
 	
+	/**
+	 * Method to drive a certain distance using time.
+	 * @param target Desired distance.
+	 * @return True if the robot has arrived at the target, false otherwise.
+	 */
 	public boolean driveToTimed(double target) {
 		target = target * TIME_CONVERSION; // time it takes to travel one inch at .4 power, measured in milliseconds
 		
@@ -622,6 +611,11 @@ public class Robot extends IterativeRobot {
 		elevator.set(ControlMode.Position, target); 
 		error = (elevator.getClosedLoopError(0)); 
 		return false; 
+	}
+	
+	public void resetEncoders() {
+		leftEncoder.reset();
+		rightEncoder.reset();	
 	}
 	
 	public void resetGyro(){
