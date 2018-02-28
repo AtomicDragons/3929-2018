@@ -20,6 +20,7 @@ import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
@@ -127,18 +128,9 @@ public class Robot extends IterativeRobot {
 	Joystick opStick;
 		
 	//Smart dashboard auto choices
-	private static final String kLeftLeftSwAuto = "Left Start, Left Switch";
-	private static final String kLeftRightSwAuto = "Left Start, Right Switch";
-	private static final String kLeftLeftScAuto = "Left Start, Left Scale";
-	private static final String kLeftRightScAuto = "Left Start, Right Scale";
-	private static final String kRightLeftSwAuto = "Right Start, Left Switch";
-	private static final String kRightRightSwAuto = "Right Start, Right Switch";
-	private static final String kRightLeftScAuto = "Right Start, Left Scale";
-	private static final String kRightRightScAuto = "Right Start, Right Scale";
-	private static final String kCenterLeftSwAuto = "Center Start, Left Switch";
-	private static final String kCenterRightSwAuto = "Center Start, Right Switch";
-	private static final String kCenterLeftScAuto = "Center Start, Left Scale";
-	private static final String kCenterRightScAuto = "Center Start, Right Scale";
+	private String gameData;
+	private static final String kLeftAuto = "Left Auto";
+	private static final String kRightAuto = "Right Auto";
 	
 	private double autoDelay = 0;
 	
@@ -158,7 +150,7 @@ public class Robot extends IterativeRobot {
 	
 	//Auton stages
 	enum AutoStage{
-		turnZero, driveOne, turnOne, driveTwo, turnTwo, driveThree, place
+		drive, place, end
 	}
 	private boolean elevatorZeroed;
 	AutoStage stage;
@@ -244,18 +236,8 @@ public class Robot extends IterativeRobot {
 		SmartDashboard.putNumber("Error", error);
 		
 		//Add auto choices to SmartDashboard
-		m_autoChooser.addDefault("Left Start, Left Switch", kLeftLeftSwAuto);
-		m_autoChooser.addObject("Left Start, Right Switch", kLeftRightSwAuto);
-		m_autoChooser.addObject("Left Start, Left Scale", kLeftLeftScAuto);
-		m_autoChooser.addObject("Left Start, Right Scale", kLeftRightScAuto);
-		m_autoChooser.addObject("Right Start, Left Switch", kRightLeftSwAuto);
-		m_autoChooser.addObject("Right Start, Right Switch", kRightRightSwAuto);
-		m_autoChooser.addObject("Right Start, Left Scale", kRightLeftScAuto);
-		m_autoChooser.addObject("Right Start, Right Scale", kRightRightScAuto);
-		m_autoChooser.addObject("Center Start, Left Switch", kCenterLeftSwAuto);
-		m_autoChooser.addObject("Center Start, Right Switch", kCenterRightSwAuto);
-		m_autoChooser.addObject("Center Start, Left Scale", kCenterLeftScAuto);
-		m_autoChooser.addObject("Center Start, Right Scale", kCenterRightScAuto);
+		m_autoChooser.addDefault("Left Start", kLeftAuto);
+		m_autoChooser.addObject("Right Start", kRightAuto);
 		SmartDashboard.putData("Auto choices", m_autoChooser);
 		
 		//Add driving modes to SmartDashboard
@@ -263,9 +245,6 @@ public class Robot extends IterativeRobot {
 		m_driveChooser.addObject("Arcade Driving Mode", kArcadeMode);
 		m_driveChooser.addObject("Console Driving Mode", kConsoleMode);
 		SmartDashboard.putData("Drive choices", m_driveChooser);
-		
-		//Move robot auto to first stage
-		stage = AutoStage.turnZero;
 	}
 
 	/**
@@ -284,9 +263,9 @@ public class Robot extends IterativeRobot {
 	public void autonomousInit() {
 
 		m_autoSelected = m_autoChooser.getSelected();
-		stage = AutoStage.turnZero;
+		gameData = DriverStation.getInstance().getGameSpecificMessage ();
+		stage = AutoStage.drive;
 		resetEncoders();
-		resetGyro();
 	}
 
 	/**
@@ -298,60 +277,49 @@ public class Robot extends IterativeRobot {
 		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
 		
-		
-		/*
 		if(!elevatorZeroed) {
 			if(elevatorZero() ) {	
 				elevatorZeroed = true;
 			}
 		}
-		*/
 		
-		switch (m_autoSelected) {
-			case kLeftLeftSwAuto:
-				leftLeftSwAuto();
-				break;
-			case kLeftRightSwAuto:
-				leftRightSwAuto();
-				break;
-			case kLeftLeftScAuto:
-				leftLeftScAuto();
-				break;
-			case kLeftRightScAuto:
-				leftRightScAuto();
-				break;
-			case kRightLeftSwAuto:
-				rightLeftSwAuto();
-				break;
-			case kRightRightSwAuto:
-				rightRightSwAuto();
-				break;
-			case kRightLeftScAuto:
-				rightLeftScAuto();
-				break;
-			case kRightRightScAuto:
-				rightRightScAuto();
-				break;
-			case kCenterLeftSwAuto:
-				centerLeftSwAuto();
-				break;
-			case kCenterRightSwAuto:
-				centerRightSwAuto();
-				break;
-			case kCenterLeftScAuto:
-				centerLeftScAuto();
-				break;
-			case kCenterRightScAuto:
-				centerRightScAuto();
-				break;
-			default:
-				break;
+		switch(stage) {
+		case drive:
+			if(!driveTo(132 - ROBOT_LENGTH)) {
+			}
+			else {
+				stage = AutoStage.place;
+			}
+			break;
+		case place:
+			if( (m_autoSelected == kLeftAuto && gameData.substring(0, 1).equals("L")) ||
+				((m_autoSelected == kRightAuto && gameData.substring(0, 1).equals("R"))) ) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				Timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				Timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+				stage = AutoStage.end;
+			}
+			else {
+				stage = AutoStage.end;
+			}
+			break;
+		case end:
+			System.out.println("=)");
 		}
+		
 	}
 
 	/**
 	 * This function is called periodically during operator control.
 	 */
+	
+	public void autoLeft() {
+		
+	}
 	
 	public void teleopInit() {
 		m_driveSelected = m_driveChooser.getSelected();
@@ -538,630 +506,8 @@ public class Robot extends IterativeRobot {
 		return false;
 	}
 	
-	/**
-	 * Method to drive a certain distance using PID.
-	 * @param target Desired distance.
-	 * @return True if the robot has arrived at the target, false otherwise.
-	 */
-	public boolean driveToPID(double target) {
-		target = target * PULSE_CONVERSION;
-		//remember to set coefficients kP, kI, & kD
-		error = ( leftFront.getClosedLoopError(0));
-		//signal = ( leftFront.getMotorOutputPercent() + rightFront.getMotorOutputPercent() ) / 2;
-		if(error < .05) {
-			return true;
-		}
-		leftFront.set(ControlMode.Position, target);
-		rightFront.set(ControlMode.Position, target);
-		return false;
-	}
-	
-	/**
-	 * Method to drive a certain distance using time.
-	 * @param target Desired distance.
-	 * @return True if the robot has arrived at the target, false otherwise.
-	 */
-	public boolean driveToTimed(double target) {
-		target = target * TIME_CONVERSION; // time it takes to travel one inch at .4 power, measured in milliseconds
-		
-		timer.delay(target);
-		drive.tankDrive(.4, .4);
-		
-		return true;
-	}
-
-	
-	/**
-	 * Method to turn to a certain angle using MXP.
-	 * @param target Desired angle.
-	 * @return True if the robot has arrived at the target, false otherwise.
-	 */
-	public boolean turnTo(double target) {
-		if((Math.abs(imu.getFusedHeading()) > target + 10 ||Math.abs(imu.getFusedHeading()) < target - 10)) {
-			drive.tankDrive(.5 , - .5);	
-			System.out.println(imu.getFusedHeading());
-			return false;
-		}
-		else {
-			drive.tankDrive(0.0, 0.0);
-			resetGyro();
-			return true;
-		}
-	}
-	
-	/**
-	 * Method to move the elevator a certain distance using PID.
-	 * @param target Desired distance.
-	 * @return True if the elevator has arrived at the target, false otherwise.
-	 */
-	public boolean elevatorTo(double target) {
-		if( error< .05) {
-			return true;
-		}
-		elevator.set(ControlMode.Position, target); 
-		error = (elevator.getClosedLoopError(0)); 
-		return false; 
-	}
-	
 	public void resetEncoders() {
 		leftEncoder.reset();
 		rightEncoder.reset();	
-	}
-	
-	public void resetGyro(){
-		imu.resetDisplacement();
-	}
-	
-	public void dummyAuto() {
-		switch(stage) {
-		case turnZero:
-			stage = AutoStage.driveOne;
-			break;
-		case driveOne:
-			if(!driveTo(138 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			timer.delay(.75);
-			leftIntake.set(1.0);
-			rightIntake.set(-1.0);
-			timer.delay(.75);
-			leftIntake.set(0);
-			rightIntake.set(0);
-			//clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-	
-	public void leftLeftSwAuto() {
-		switch(stage) {
-		case turnZero:
-			stage = AutoStage.driveOne;
-			break;
-		case driveOne:
-			if(!driveTo(168 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			liftSully.set(DoubleSolenoid.Value.kForward);
-			timer.delay(1);
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-
-	public void leftRightSwAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(264 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(168 - ROBOT_HALF )) {
-			}
-			else {
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void leftLeftScAuto() {
-		switch(stage) {
-		case turnZero:
-			stage = AutoStage.driveOne;
-			break;
-		case driveOne:
-			if(!driveTo(324 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void leftRightScAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(264 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(324 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void rightRightSwAuto() {
-		switch(stage) {
-		case turnZero:
-			stage = AutoStage.driveOne;
-			break;
-		case driveOne:
-			if(!driveTo(168 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void rightLeftSwAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(264 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(168 - ROBOT_HALF )) {
-			}
-			else {
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void rightRightScAuto() {
-		switch(stage) {
-		case turnZero:
-			stage = AutoStage.driveOne;
-			break;
-		case driveOne:
-			if(!driveTo(324 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void rightLeftScAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(264 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(324 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-
-	public void centerLeftSwAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(-43.95)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(233.38 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(133.95)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-	
-	public void centerRightSwAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(43.95)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(233.38 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-133.95)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-	
-	public void centerLeftScAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(-43.95)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(233.38 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(43.95)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(156 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(!turnTo(90)) {
-			}
-			else {
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-		case place:
-			liftSully.set(DoubleSolenoid.Value.kForward);
-			timer.delay(1);
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-	
-	public void centerRightScAuto() {
-		switch(stage) {
-		case turnZero:
-			if(!turnTo(43.95)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
-			break;
-		case driveOne:
-			if(!driveTo(233.38 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-43.95)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(156 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnTwo;
-			}
-			break;
-		case turnTwo:
-			if(!turnTo(-90)) {
-			}
-			else {
-				stage = AutoStage.driveThree;
-			}
-			break;
-		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
 	}
 }
