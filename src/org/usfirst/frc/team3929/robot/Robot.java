@@ -131,6 +131,7 @@ public class Robot extends IterativeRobot {
 	private String gameData;
 	private static final String kLeftAuto = "Left Auto";
 	private static final String kRightAuto = "Right Auto";
+	private static final String kCenterAuto = "Center Auto";
 	
 	private double autoDelay = 0;
 	
@@ -218,8 +219,6 @@ public class Robot extends IterativeRobot {
 		//Add motor controllers to control groups
 		leftMotors = new SpeedControllerGroup(leftFront);
 		rightMotors = new SpeedControllerGroup(rightFront);
-		throttleLeft = 0;
-		throttleRight = 0;
 		
 		//Add controller groups to differential drive
 		drive = new DifferentialDrive(leftMotors, rightMotors);
@@ -238,6 +237,7 @@ public class Robot extends IterativeRobot {
 		//Add auto choices to SmartDashboard
 		m_autoChooser.addDefault("Left Start", kLeftAuto);
 		m_autoChooser.addObject("Right Start", kRightAuto);
+		m_autoChooser.addObject("Center Start", kCenterAuto);
 		SmartDashboard.putData("Auto choices", m_autoChooser);
 		
 		//Add driving modes to SmartDashboard
@@ -285,15 +285,32 @@ public class Robot extends IterativeRobot {
 		
 		switch(stage) {
 		case drive:
-			if(!driveTo(132 - ROBOT_LENGTH)) {
+			if( m_autoSelected == kLeftAuto) {
+				if(!driveTo(140 - ROBOT_LENGTH, .8)) {
+				}
+				else {
+					stage = AutoStage.place;
+				}
 			}
-			else {
-				stage = AutoStage.place;
+			else if( m_autoSelected == kRightAuto) {
+				if(!driveTo(132 - ROBOT_LENGTH)) {
+				}
+				else {
+					stage = AutoStage.place;
+				}
+			}
+			else if( m_autoSelected == kCenterAuto) {
+				drive.tankDrive(.7, .4);
+				Timer.delay(2);
+				drive.tankDrive(.8, .8);
+				Timer.delay(2);
+				drive.tankDrive(0.0, 0.0);
+				stage = AutoStage.end;
 			}
 			break;
 		case place:
 			if( (m_autoSelected == kLeftAuto && gameData.substring(0, 1).equals("L")) ||
-				((m_autoSelected == kRightAuto && gameData.substring(0, 1).equals("R"))) ) {
+			  ( (m_autoSelected == kRightAuto && gameData.substring(0, 1).equals("R")))) {
 				liftSully.set(DoubleSolenoid.Value.kForward);
 				Timer.delay(1);
 				leftIntake.set(1.0);
@@ -310,14 +327,6 @@ public class Robot extends IterativeRobot {
 		case end:
 			System.out.println("=)");
 		}
-		
-	}
-
-	/**
-	 * This function is called periodically during operator control.
-	 */
-	
-	public void autoLeft() {
 		
 	}
 	
@@ -337,16 +346,6 @@ public class Robot extends IterativeRobot {
 			
 			//Arcade
 			case kArcadeMode:
-				//this hasn't been tested!!!!!!
-				/*if(Math.abs(throttleLeft + (driveStick.getRawAxis(1)) / 3) < 1 ) {
-					throttleLeft += (driveStick.getRawAxis(1)) / 10;
-				}
-				if(Math.abs(throttleRight + (driveStick.getRawAxis(0)) / 3) < 1) {
-					throttleRight += (driveStick.getRawAxis(0)) / 10;
-				}
-				System.out.println(throttleLeft + " ||| " + throttleRight);
-				drive.arcadeDrive(throttleLeft, throttleRight, true);*/
-				
 				drive.arcadeDrive(driveStick.getRawAxis(1), driveStick.getRawAxis(0), true);
 			break;
 			
@@ -401,6 +400,7 @@ public class Robot extends IterativeRobot {
 			backHanger.set(0);
 		}
 		*/
+		
 		//Opstick elevator controls
 		if(Math.abs(opStick.getRawAxis(1)) > .3) {
 			if( (elevatorLimitSwitchTop.get() && opStick.getRawAxis(1) < 0) ||
@@ -500,8 +500,32 @@ public class Robot extends IterativeRobot {
 			drive.tankDrive(error / target, (error / target) * .9);
 		}
 		else {
-			System.out.println("Hi");
 			drive.tankDrive(.5, .5);
+		}
+		return false;
+	}
+	
+	/**
+	 * 
+	 * Simple method to drive a certain distance using proportion
+	 * @param offset Multiplier for right motors
+	 * @param target Desired distance.
+	 * @return True if the robot has arrived at the target, false otherwise.
+	 */
+	public boolean driveTo(double target, double offset) {
+		System.out.println(target);
+		System.out.println(error + "\n");
+		error = target - (leftEncoder.get() * PULSE_CONVERSION);
+		if(error < 10) {
+			drive.tankDrive(0.0, 0.0);
+			resetEncoders();
+			return true;
+		}
+		if(error / target > .5) {
+			drive.tankDrive( (error / target), (error / target) * offset );
+		}
+		else {
+			drive.tankDrive(.5, .5 * offset);
 		}
 		return false;
 	}
