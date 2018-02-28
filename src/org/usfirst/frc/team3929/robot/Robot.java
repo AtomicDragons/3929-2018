@@ -309,8 +309,7 @@ public class Robot extends IterativeRobot {
 		
 		switch (m_autoSelected) {
 			case kLeftLeftSwAuto:
-				dummyAuto();
-				//leftLeftSwAuto();
+				leftLeftSwAuto();
 				break;
 			case kLeftRightSwAuto:
 				leftRightSwAuto();
