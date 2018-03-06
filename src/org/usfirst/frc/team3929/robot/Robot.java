@@ -20,6 +20,7 @@ import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
@@ -127,19 +128,11 @@ public class Robot extends IterativeRobot {
 	Joystick opStick;
 		
 	//Smart dashboard auto choices
-	private static final String kLeftLeftSwAuto = "Left Start, Left Switch";
-	private static final String kLeftRightSwAuto = "Left Start, Right Switch";
-	private static final String kLeftLeftScAuto = "Left Start, Left Scale";
-	private static final String kLeftRightScAuto = "Left Start, Right Scale";
-	private static final String kRightLeftSwAuto = "Right Start, Left Switch";
-	private static final String kRightRightSwAuto = "Right Start, Right Switch";
-	private static final String kRightLeftScAuto = "Right Start, Left Scale";
-	private static final String kRightRightScAuto = "Right Start, Right Scale";
-	private static final String kCenterLeftSwAuto = "Center Start, Left Switch";
-	private static final String kCenterRightSwAuto = "Center Start, Right Switch";
-	private static final String kCenterLeftScAuto = "Center Start, Left Scale";
-	private static final String kCenterRightScAuto = "Center Start, Right Scale";
-	
+	private static final String kLeftStart = "Left Start";
+	private static final String kRightStart = "Right Start";
+	private static final String kCenterStart = "Center Start";
+
+	String gameData;
 	private double autoDelay = 0;
 	
 	Preferences prefs;
@@ -157,11 +150,17 @@ public class Robot extends IterativeRobot {
 	private SendableChooser<String> m_driveChooser = new SendableChooser<>();
 	
 	//Auton stages
+	enum AutoMode {
+		kLeftLeftSwAuto, kLeftRightSwAuto, kLeftLeftScAuto, kLeftRightScAuto, 
+		kCenterRightSwAuto, kCenterLeftSwAuto, kCenterRightScAuto, kCenterLeftScAuto,
+		kRightLeftSwAuto, kRightRightSwAuto, kRightLeftScAuto, kRightRightScAuto,
+	}
 	enum AutoStage{
-		turnZero, driveOne, turnOne, driveTwo, turnTwo, driveThree, place
+		turnZero, driveOne, turnOne, driveTwo, turnTwo, driveThree, place, end
 	}
 	private boolean elevatorZeroed;
 	AutoStage stage;
+	AutoMode mode;
 
 	/**
 	 * This function is run when the robot is first started up and should be
@@ -241,21 +240,15 @@ public class Robot extends IterativeRobot {
 		error = 0.0;
 		
 		SmartDashboard.putNumber("Signal", signal);
+		SmartDashboard.putNumber("Angle", imu.getAngle());
+		SmartDashboard.putNumber("Distance", leftEncoder.get() * PULSE_CONVERSION);
 		SmartDashboard.putNumber("Error", error);
 		
 		//Add auto choices to SmartDashboard
-		m_autoChooser.addDefault("Left Start, Left Switch", kLeftLeftSwAuto);
-		m_autoChooser.addObject("Left Start, Right Switch", kLeftRightSwAuto);
-		m_autoChooser.addObject("Left Start, Left Scale", kLeftLeftScAuto);
-		m_autoChooser.addObject("Left Start, Right Scale", kLeftRightScAuto);
-		m_autoChooser.addObject("Right Start, Left Switch", kRightLeftSwAuto);
-		m_autoChooser.addObject("Right Start, Right Switch", kRightRightSwAuto);
-		m_autoChooser.addObject("Right Start, Left Scale", kRightLeftScAuto);
-		m_autoChooser.addObject("Right Start, Right Scale", kRightRightScAuto);
-		m_autoChooser.addObject("Center Start, Left Switch", kCenterLeftSwAuto);
-		m_autoChooser.addObject("Center Start, Right Switch", kCenterRightSwAuto);
-		m_autoChooser.addObject("Center Start, Left Scale", kCenterLeftScAuto);
-		m_autoChooser.addObject("Center Start, Right Scale", kCenterRightScAuto);
+		m_autoChooser.addDefault("Left Start", kLeftStart);
+		m_autoChooser.addObject("Right Start", kRightStart);
+		m_autoChooser.addObject("Center Start", kCenterStart);
+
 		SmartDashboard.putData("Auto choices", m_autoChooser);
 		
 		//Add driving modes to SmartDashboard
@@ -282,11 +275,57 @@ public class Robot extends IterativeRobot {
 	
 	@Override
 	public void autonomousInit() {
-
+		gameData = DriverStation.getInstance().getGameSpecificMessage();
 		m_autoSelected = m_autoChooser.getSelected();
 		stage = AutoStage.turnZero;
+		elevatorZeroed = false;
 		resetEncoders();
 		resetGyro();
+		
+		 if(m_autoSelected == kLeftStart) {
+			if(gameData.substring(0,1).equals("R")) {
+				mode = AutoMode.kLeftRightSwAuto;
+			}
+			if(gameData.substring(0,1).equals("L")) {
+				mode = AutoMode.kLeftLeftSwAuto;
+			}
+			if(gameData.substring(1,2).equals("R")) {
+				mode = AutoMode.kLeftRightScAuto;
+			}
+			if(gameData.substring(1,2).equals("L")) {
+				mode = AutoMode.kLeftLeftScAuto;
+			}
+		}
+		else if(m_autoSelected == kCenterStart) {
+			if(gameData.substring(0,1).equals("R")) {
+				mode = AutoMode.kCenterRightSwAuto;
+			}
+			if(gameData.substring(0,1).equals("L")) {
+				mode = AutoMode.kCenterLeftSwAuto;
+			}
+			if(gameData.substring(1,2).equals("R")) {
+				mode = AutoMode.kCenterRightScAuto;
+			}
+			if(gameData.substring(1,2).equals("L")) {
+				mode = AutoMode.kCenterLeftScAuto;
+			}
+		}
+		else if(m_autoSelected == kRightStart) {
+			if(gameData.substring(0,1).equals("R")) {
+				mode = AutoMode.kRightRightSwAuto;
+			}
+			if(gameData.substring(0,1).equals("L")) {
+				mode = AutoMode.kRightLeftSwAuto;
+			}
+			if(gameData.substring(1,2).equals("R")) {
+				mode = AutoMode.kRightRightScAuto;
+			}
+			if(gameData.substring(1,2).equals("L")) {
+				mode = AutoMode.kRightLeftScAuto;
+			}
+		}
+		
+		mode = AutoMode.kLeftLeftSwAuto;
 	}
 
 	/**
@@ -297,17 +336,17 @@ public class Robot extends IterativeRobot {
 		Scheduler.getInstance().run();
 		dAngle = imu.getFusedHeading() - angle;
 		angle = imu.getFusedHeading();
-		
-		
-		/*
+		SmartDashboard.putNumber("Angle", imu.getAngle());
+		SmartDashboard.putNumber("Distance", leftEncoder.get() * PULSE_CONVERSION);
+		SmartDashboard.putNumber("Error", error);
 		if(!elevatorZeroed) {
-			if(elevatorZero() ) {	
-				elevatorZeroed = true;
+			if(mode == AutoMode.kLeftRightScAuto || mode == AutoMode.kLeftLeftScAuto ||
+			   mode == AutoMode.kCenterRightScAuto || mode == AutoMode.kCenterRightScAuto ||
+			   mode == AutoMode.kRightRightScAuto || mode == AutoMode.kRightLeftScAuto) {
+				elevatorZero();
 			}
 		}
-		*/
-		
-		switch (m_autoSelected) {
+		switch (mode) {
 			case kLeftLeftSwAuto:
 				leftLeftSwAuto();
 				break;
@@ -435,19 +474,21 @@ public class Robot extends IterativeRobot {
 		*/
 		//Opstick elevator controls
 		if(Math.abs(opStick.getRawAxis(1)) > .3) {
+			/*
 			if( (elevatorLimitSwitchTop.get() && opStick.getRawAxis(1) < 0) ||
 				(elevatorLimitSwitchBottom.get() && opStick.getRawAxis(1) > 0)	) {
-				elevator.set(-.15);
+				elevator.set(0);
 				System.out.println("Elevator stopped!");
 			}
 			else {
+			*/
 				if(opStick.getRawAxis(1) - .15 < -1) {
 					elevator.set(-1);
 				}
 				else {
 					elevator.set(opStick.getRawAxis(1) - .15);
 				}
-			}
+			//}
 		}
 		else {
 			elevator.set(-.15);
@@ -504,13 +545,13 @@ public class Robot extends IterativeRobot {
 	 * Method to zero the elevator and returns whether the elevator is zeroed or not.
 	 * @return True if the elevator is not zeroed, false otherwise.
 	 */
-	public boolean elevatorZero() {
+	public void elevatorZero() {
 		if(!elevatorLimitSwitchTop.get()) {
-			elevator.set(-.3);
-			return false;
+			elevator.set(-.3);		
 		}
 		else {
-			return true; 
+			elevator.set(0);
+			elevatorZeroed = true;
 		}
 	}
 	
@@ -520,20 +561,17 @@ public class Robot extends IterativeRobot {
 	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
 	public boolean driveTo(double target) {
-		System.out.println(target);
-		System.out.println(error + "\n");
 		error = target - (leftEncoder.get() * PULSE_CONVERSION);
-		if(error < 10) {
+		if(error < target * .05) {
 			drive.tankDrive(0.0, 0.0);
 			resetEncoders();
 			return true;
 		}
-		if(error / target > .5) {
-			drive.tankDrive(error / target, (error / target) * .9);
+		if( (error / target) * 1.4 > .5) {
+			drive.arcadeDrive( (error / target) * 1.4, imu.getAngle() * - .15 );
 		}
 		else {
-			System.out.println("Hi");
-			drive.tankDrive(.5, .5);
+			drive.arcadeDrive(.5, imu.getAngle() * - .15);
 		}
 		return false;
 	}
@@ -577,13 +615,22 @@ public class Robot extends IterativeRobot {
 	 * @return True if the robot has arrived at the target, false otherwise.
 	 */
 	public boolean turnTo(double target) {
-		if((Math.abs(imu.getFusedHeading()) > target + 10 ||Math.abs(imu.getFusedHeading()) < target - 10)) {
-			drive.tankDrive(.5 , - .5);	
-			System.out.println(imu.getFusedHeading());
+		if( (Math.abs(imu.getAngle()) > Math.abs(target) + 10 || Math.abs(imu.getAngle()) < Math.abs(target) - 10) ) {
+			if(Math.abs(target - imu.getAngle()) * .02 < .55){
+				drive.arcadeDrive(0, (target - imu.getAngle()) * .02);	
+			}
+			else if(target - imu.getAngle() < 0){
+				drive.arcadeDrive(0, -.55);	
+			}
+			else {
+				drive.arcadeDrive(0, .55);
+			}
 			return false;
 		}
 		else {
 			drive.tankDrive(0.0, 0.0);
+			timer.delay(.5);
+			resetEncoders();
 			resetGyro();
 			return true;
 		}
@@ -610,34 +657,9 @@ public class Robot extends IterativeRobot {
 	
 	public void resetGyro(){
 		imu.resetDisplacement();
+		imu.reset();
 	}
-	
-	public void dummyAuto() {
-		switch(stage) {
-		case turnZero:
-			stage = AutoStage.driveOne;
-			break;
-		case driveOne:
-			if(!driveTo(138 - ROBOT_LENGTH)) {
-			}
-			else {
-				stage = AutoStage.place;
-			}
-			break;
-		case place:
-			timer.delay(.75);
-			leftIntake.set(1.0);
-			rightIntake.set(-1.0);
-			timer.delay(.75);
-			leftIntake.set(0);
-			rightIntake.set(0);
-			//clawSully.set(DoubleSolenoid.Value.kForward);
-			break;
-		default:
-			break;
-		}
-	}
-	
+
 	public void leftLeftSwAuto() {
 		switch(stage) {
 		case turnZero:
@@ -658,16 +680,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
+			if(!driveTo(16 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			liftSully.set(DoubleSolenoid.Value.kForward);
-			timer.delay(1);
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(0,1).equals("L")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -713,14 +744,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(0,1).equals("R")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+				stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -747,14 +789,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(1,2).equals("L")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -799,14 +852,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(1,2).equals("R")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -833,14 +897,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
+			if(!driveTo(16 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(0,1).equals("R")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -885,14 +960,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(0,1).equals("L")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -919,14 +1005,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(1,2).equals("R")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -971,14 +1068,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(1,2).equals("L")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -1009,14 +1117,25 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_HALF)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(0,1).equals("L")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -1026,35 +1145,28 @@ public class Robot extends IterativeRobot {
 	public void centerRightSwAuto() {
 		switch(stage) {
 		case turnZero:
-			if(!turnTo(43.95)) {
-			}
-			else {
-				stage = AutoStage.driveOne;
-			}
+			stage = AutoStage.driveOne;
 			break;
 		case driveOne:
-			if(!driveTo(233.38 - ROBOT_HALF)) {
-			}
-			else {
-				stage = AutoStage.turnOne;
-			}
-			break;
-		case turnOne:
-			if(!turnTo(-133.95)) {
-			}
-			else {
-				stage = AutoStage.driveTwo;
-			}
-			break;
-		case driveTwo:
-			if(!driveTo(50 - ROBOT_LENGTH)) {
+			if(!driveTo(97)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 			break;
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(0,1).equals("R")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -1099,15 +1211,24 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 		case place:
-			liftSully.set(DoubleSolenoid.Value.kForward);
-			timer.delay(1);
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(1,2).equals("L")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
@@ -1152,13 +1273,24 @@ public class Robot extends IterativeRobot {
 			}
 			break;
 		case driveThree:
-			if(!driveTo(40 - ROBOT_LENGTH)) {
+			if(!driveTo(20 - ROBOT_LENGTH)) {
 			}
 			else {
 				stage = AutoStage.place;
 			}
 		case place:
-			clawSully.set(DoubleSolenoid.Value.kForward);
+			if(gameData.substring(1,2).equals("R")) {
+				liftSully.set(DoubleSolenoid.Value.kForward);
+				timer.delay(1);
+				leftIntake.set(1.0);
+				rightIntake.set(-1.0);
+				timer.delay(1);
+				leftIntake.set(0.0);
+				rightIntake.set(0.0);
+			}
+			stage = AutoStage.end;
+			break;
+		case end:
 			break;
 		default:
 			break;
